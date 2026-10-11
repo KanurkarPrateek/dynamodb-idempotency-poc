@@ -1,0 +1,36 @@
+# Local run: Redis, DynamoDB Local and an SQS-compatible queue (ElasticMQ), plus a test runner.
+#   docker compose run --rm tests                      # 8 claim-store tests, both backends
+#   docker compose run --rm trace                      # step-by-step DynamoDB trace
+#   docker compose run --rm demo                       # SQS duplicate demo, both backends
+services:
+  redis:
+    image: redis:7-alpine
+  dynamodb:
+    image: amazon/dynamodb-local:3.3.1
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+  sqs:
+    image: softwaremill/elasticmq-native:1.7.1
+  runner: &runner
+    image: python:3.12-slim
+    profiles: ["manual"]
+    working_dir: /poc
+    volumes: [".:/poc"]
+    environment: &env
+      PYTHONPATH: /poc/src
+      REDIS_URL: redis://redis:6379/0
+      DDB_ENDPOINT: http://dynamodb:8000
+      SQS_ENDPOINT: http://sqs:9324
+      QUEUE_URL: http://sqs:9324/000000000000/jobs
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: local
+      AWS_SECRET_ACCESS_KEY: local
+    depends_on: [redis, dynamodb, sqs]
+  tests:
+    <<: *runner
+    command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install -r requirements.txt && sleep 3 && for b in redis dynamodb; do CLAIM_STORE=$$b python tests/claim_poc.py; done"]
+  trace:
+    <<: *runner
+    command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install -r requirements.txt && sleep 3 && CLAIM_STORE=dynamodb python tests/claim_trace.py"]
+  demo:
+    <<: *runner
+    command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install -r requirements.txt && sleep 3 && for b in redis dynamodb; do CLAIM_STORE=$$b python tests/sqs_duplicate_demo.py; done"]

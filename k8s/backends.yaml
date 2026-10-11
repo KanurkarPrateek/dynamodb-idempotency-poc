@@ -1,0 +1,62 @@
+# Backends for the POC: DynamoDB Local, Redis and an SQS-compatible queue (ElasticMQ).
+# On AWS you would use real DynamoDB and SQS instead and skip these three.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: dynamodb}
+spec:
+  selector: {matchLabels: {app: dynamodb}}
+  template:
+    metadata: {labels: {app: dynamodb}}
+    spec:
+      containers:
+      - name: dynamodb
+        image: amazon/dynamodb-local:3.3.1
+        args: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+        env: [{name: JAVA_TOOL_OPTIONS, value: "-Xmx512m"}]
+        ports: [{containerPort: 8000}]
+        readinessProbe: {tcpSocket: {port: 8000}, periodSeconds: 5}
+        resources: {requests: {cpu: 200m, memory: 512Mi}, limits: {cpu: "1", memory: 1Gi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: dynamodb}
+spec: {selector: {app: dynamodb}, ports: [{port: 8000, targetPort: 8000}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: redis}
+spec:
+  selector: {matchLabels: {app: redis}}
+  template:
+    metadata: {labels: {app: redis}}
+    spec:
+      containers:
+      - name: redis
+        image: redis:7-alpine
+        ports: [{containerPort: 6379}]
+        resources: {requests: {cpu: 50m, memory: 64Mi}, limits: {cpu: 500m, memory: 256Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: redis}
+spec: {selector: {app: redis}, ports: [{port: 6379, targetPort: 6379}]}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: sqs}
+spec:
+  selector: {matchLabels: {app: sqs}}
+  template:
+    metadata: {labels: {app: sqs}}
+    spec:
+      containers:
+      - name: elasticmq
+        image: softwaremill/elasticmq-native:1.7.1
+        ports: [{containerPort: 9324}]
+        readinessProbe: {tcpSocket: {port: 9324}, periodSeconds: 5}
+        resources: {requests: {cpu: 100m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: sqs}
+spec: {selector: {app: sqs}, ports: [{port: 9324, targetPort: 9324}]}

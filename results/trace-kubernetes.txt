@@ -1,0 +1,91 @@
+Table: job-claims   lease: 4 s   backend: dynamodb
+
+==============================================================================
+SCENARIO 1: a normal job
+==============================================================================
+
+  Before anything happens:
+      DynamoDB item  ->  (no item)
+
+  worker-A receives the job from SQS and claims it  ->  ok
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-101:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711545 (in +3 s)"}
+
+  worker-A works (CRM write, AI call) and renews its lease (heartbeat)
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-101:summary:v1#e00c91", "lease_expires": "1791711547 (in +4 s)", "status": "IN_PROGRESS"}
+
+  worker-A finishes: marks DONE, then deletes the SQS message
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-101:summary:v1#e00c91", "status": "DONE"}
+
+==============================================================================
+SCENARIO 2: the same job is delivered again after it finished
+==============================================================================
+
+  SQS delivers the job again; worker-B claims it  ->  done
+
+  worker-B sees DONE: skips the work and deletes the message. Nothing runs twice.
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-101:summary:v1#e00c91", "status": "DONE"}
+
+==============================================================================
+SCENARIO 3: two workers get the same job at the same time (job outlived the visibility timeout)
+==============================================================================
+
+  worker-A claims it  ->  ok
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-102:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711547 (in +4 s)"}
+
+  SQS hands the same message to worker-B; worker-B claims  ->  busy
+
+  worker-B sees another owner: puts the message back for later and does no work
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-102:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711547 (in +4 s)"}
+
+  worker-A finishes and marks DONE
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-102:summary:v1#e00c91", "status": "DONE"}
+
+  worker-B's later retry claims  ->  done  (skipped)
+
+==============================================================================
+SCENARIO 4: a worker is killed in the middle of a job
+==============================================================================
+
+  worker-A claims it  ->  ok
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-103:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711547 (in +4 s)"}
+
+  worker-A is killed (Spot reclaim). No heartbeat, no DONE, no release.
+
+  SQS redelivers; worker-B tries at once  ->  busy  (lease still valid, so wait)
+
+  ... 5 s later the lease has expired ...
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-103:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711547 (in -2 s)"}
+
+  worker-B claims again  ->  ok  (takes over: owner changes)
+      DynamoDB item  ->  {"owner": "worker-B", "pk": "claim#meeting-103:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711552 (in +3 s)"}
+
+  worker-A 'wakes up' late and tries to release the claim (it should not be able to)
+      DynamoDB item  ->  {"owner": "worker-B", "pk": "claim#meeting-103:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711552 (in +3 s)"}
+
+  worker-C tries to claim  ->  busy  (still worker-B's)
+
+  worker-B finishes and marks DONE
+      DynamoDB item  ->  {"owner": "worker-B", "pk": "claim#meeting-103:summary:v1#e00c91", "status": "DONE"}
+
+==============================================================================
+SCENARIO 5: a worker hands a job back on shutdown (SIGTERM)
+==============================================================================
+
+  worker-A claims  ->  ok
+      DynamoDB item  ->  {"owner": "worker-A", "pk": "claim#meeting-104:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711552 (in +3 s)"}
+
+  worker-A gets SIGTERM, cannot finish in time: releases the claim and sets SQS visibility to 0
+      DynamoDB item  ->  (no item)
+
+  worker-B picks it up immediately  ->  ok
+      DynamoDB item  ->  {"owner": "worker-B", "pk": "claim#meeting-104:summary:v1#e00c91", "status": "IN_PROGRESS", "lease_expires": "1791711552 (in +3 s)"}
+
+==============================================================================
+SCENARIO 6: the API concurrency slots
+==============================================================================
+
+  worker-A holds 3 of 16 API slots: ['apislot#14', 'apislot#15', 'apislot#6']
+
+  after release, slot items left: 0
+
+Done.

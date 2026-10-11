@@ -1,0 +1,22 @@
+# kubectl apply -k .     (creates namespace claim-poc with the backends and the three test Jobs)
+# kubectl delete -k .    (removes everything)
+namespace: claim-poc
+resources:
+  - k8s/namespace.yaml
+  - k8s/backends.yaml
+  - k8s/jobs.yaml
+configMapGenerator:
+  - name: poc-src
+    files: [src/claimstore.py, src/worker_example.py]
+  - name: poc-tests
+    files: [tests/claim_poc.py, tests/claim_trace.py, tests/sqs_duplicate_demo.py, tests/wait_for_backends.py]
+  - name: poc-env
+    literals:
+      - PYTHONPATH=/poc/src
+      - REDIS_URL=redis://redis:6379/0
+      - DDB_ENDPOINT=http://dynamodb:8000
+      - SQS_ENDPOINT=http://sqs:9324
+      - QUEUE_URL=http://sqs:9324/000000000000/jobs
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local

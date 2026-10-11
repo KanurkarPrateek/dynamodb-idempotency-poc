@@ -1,0 +1,18 @@
+backend: redis
+PASS  race: 50 keys x 20 simultaneous workers: 50 keys had exactly one winner
+PASS  done-skip: first=ok, later deliveries=['done', 'done', 'done', 'done', 'done']
+PASS  crash-takeover: while lease valid: busy; after lease expired: ok
+PASS  heartbeat: other worker saw ['busy', 'busy', 'busy', 'busy'] over 6 s (longer than the lease)
+PASS  release: after hand-back, another worker got: ok
+PASS  stale-owner: b took over: ok; after a's late release a third worker sees: busy
+PASS  api-limit: 320 calls by 64 threads, peak concurrent 16 (limit 16), 1.4 s
+PASS  latency: {'claim': {'p50_ms': 0.18, 'p99_ms': 0.29}, 'done': {'p50_ms': 0.28, 'p99_ms': 0.48}}
+backend: dynamodb
+PASS  race: 50 keys x 20 simultaneous workers: 50 keys had exactly one winner
+PASS  done-skip: first=ok, later deliveries=['done', 'done', 'done', 'done', 'done']
+PASS  crash-takeover: while lease valid: busy; after lease expired: ok
+PASS  heartbeat: other worker saw ['busy', 'busy', 'busy', 'busy'] over 6 s (longer than the lease)
+PASS  release: after hand-back, another worker got: ok
+PASS  stale-owner: b took over: ok; after a's late release a third worker sees: busy
+PASS  api-limit: 320 calls by 64 threads, peak concurrent 13 (limit 16), 5.0 s
+PASS  latency: {'claim': {'p50_ms': 2.46, 'p99_ms': 9.0}, 'done': {'p50_ms': 2.28, 'p99_ms': 6.92}}

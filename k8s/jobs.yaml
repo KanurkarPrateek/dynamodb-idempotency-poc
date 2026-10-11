@@ -1,0 +1,70 @@
+# Test Jobs. Run one, then read its logs:
+#   kubectl -n claim-poc logs -f job/claim-trace
+apiVersion: batch/v1
+kind: Job
+metadata: {name: claim-tests}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: python:3.12-slim
+        workingDir: /poc
+        command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install 'boto3>=1.35,<2' 'redis>=5,<7' && python tests/wait_for_backends.py && for b in redis dynamodb; do CLAIM_STORE=$b python tests/claim_poc.py; done"]
+        envFrom: [{configMapRef: {name: poc-env}}]
+        volumeMounts:
+        - {name: src, mountPath: /poc/src}
+        - {name: tests, mountPath: /poc/tests}
+        resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+      volumes:
+      - {name: src, configMap: {name: poc-src}}
+      - {name: tests, configMap: {name: poc-tests}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: claim-trace}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: python:3.12-slim
+        workingDir: /poc
+        command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install 'boto3>=1.35,<2' 'redis>=5,<7' && python tests/wait_for_backends.py && CLAIM_STORE=dynamodb python tests/claim_trace.py"]
+        envFrom: [{configMapRef: {name: poc-env}}]
+        volumeMounts:
+        - {name: src, mountPath: /poc/src}
+        - {name: tests, mountPath: /poc/tests}
+        resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+      volumes:
+      - {name: src, configMap: {name: poc-src}}
+      - {name: tests, configMap: {name: poc-tests}}
+---
+apiVersion: batch/v1
+kind: Job
+metadata: {name: sqs-duplicate-demo}
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 86400
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: main
+        image: python:3.12-slim
+        workingDir: /poc
+        command: ["sh", "-c", "pip -q --disable-pip-version-check --root-user-action=ignore install 'boto3>=1.35,<2' 'redis>=5,<7' && python tests/wait_for_backends.py && for b in redis dynamodb; do CLAIM_STORE=$b python tests/sqs_duplicate_demo.py; done"]
+        envFrom: [{configMapRef: {name: poc-env}}]
+        volumeMounts:
+        - {name: src, mountPath: /poc/src}
+        - {name: tests, mountPath: /poc/tests}
+        resources: {requests: {cpu: 200m, memory: 256Mi}, limits: {cpu: "1", memory: 512Mi}}
+      volumes:
+      - {name: src, configMap: {name: poc-src}}
+      - {name: tests, configMap: {name: poc-tests}}

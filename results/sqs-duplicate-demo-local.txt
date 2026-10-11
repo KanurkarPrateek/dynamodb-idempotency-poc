@@ -1,0 +1,10 @@
+backend: redis
+messages delivered by SQS: 105 for 50 unique jobs
+jobs whose side effect ran more than once: 0
+jobs never completed: 0
+PASS
+backend: dynamodb
+messages delivered by SQS: 104 for 50 unique jobs
+jobs whose side effect ran more than once: 0
+jobs never completed: 0
+PASS
